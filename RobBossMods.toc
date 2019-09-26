@@ -1,14 +1,15 @@
-## Interface: 40000
+## Interface: 40100
 ## Title: RobBossMods
 ## Notes: Boss tactics for heroic cataclysm dungeons
 ## Notes-deDE: Boss Erklaerungen fuer  heroische Kataklysmus Instanzen
-## Author: Lestá,Ullom@EU-die silberne Hand
-## SavedVariables: rbm_elang, rbm_tellnextboss, rbm_showminimap, rbm_telleveryboss, rbm_customTactics, rbm_minimapcords
+## Author: Lestá,Pîc@EU-Thrall
+## SavedVariables: rbm_elang, rbm_tellnextboss, rbm_showminimap, rbm_telleveryboss, rbm_customTactics, rbm_minimapcords, rbm_oncetold, rbm_whispermode, rbm_tellgrid, rbm_showframe, rbm_nevershow
 
 embeds.xml
 
 Locales\enUS.lua
 Locales\deDE.lua
 Locales\frFR.lua
+Locales\ruRU.lua
 
 RobBossMods.xml

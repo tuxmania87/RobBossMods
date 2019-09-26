@@ -4,6 +4,394 @@
  xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
  <Script file="RobBossMods.lua"/> 
 
+ 
+ <Frame name="RBM_Mainframe" strata="DIALOG" parent="UIParent" toplevel="true" movable="true" enableMouse="true" hidden="true">
+	<Scripts>
+		<!--<OnLoad>RBM_Mainframe_Init();</OnLoad>-->
+	</Scripts>  
+	<TitleRegion>
+		<Size x="210" y="230"/>
+		<Anchors><Anchor point="TOP"/></Anchors>
+	</TitleRegion>
+	 
+	<Size>
+		<AbsDimension x="210" y="230" />
+	</Size>
+	<Anchors>
+		<Anchor point="CENTER" />
+	</Anchors>
+	<Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" title="true">
+		<BackgroundInsets>
+			<AbsInset left="11" right="12" top="12" bottom="11" />
+		</BackgroundInsets>
+		<EdgeSize>
+			<AbsValue val="32" />
+		</EdgeSize>
+	</Backdrop>
+	<Layers>
+      <Layer level="ARTWORK">
+        <Texture name="RBM_Mainframe_Header"
+          file="Interface\DialogFrame\UI-DialogBox-Header">
+          <Size>
+            <AbsDimension x="200" y="64"/>
+          </Size>
+          <Anchors>
+            <Anchor point="TOP">
+              <Offset>
+                <AbsDimension x="0" y="12"/>
+              </Offset>
+            </Anchor>
+          </Anchors>
+        </Texture>
+        <FontString inherits="GameFontNormal" text="  RobBossMods  ">
+          <Anchors>
+            <Anchor point="TOP" relativeTo="RBM_Mainframe_Header">
+              <Offset>
+                <AbsDimension x="0" y="-12"/>
+              </Offset>
+            </Anchor>
+          </Anchors>
+        </FontString>
+		<!-- Current Boss  fxied-->
+		<FontString name="RBM_CurrentBoss_Frame_fixed" font="Fonts\FRIZQT__.TTF" text="CURRENT_BOSS_FIX" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="0.5" b="0" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="CENTER" >
+					<Offset x="0" y="85" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!-- Current Boss -->
+		<FontString name="RBM_CurrentBoss_Frame" font="Fonts\FRIZQT__.TTF" text="CURRENT_BOSS" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="CENTER" >
+					<Offset x="0" y="72" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!-- PARTY -->
+		<FontString name="RBM_PARTY_Frame" font="Fonts\FRIZQT__.TTF" text="PARTY" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="LEFT" >
+					<Offset x="40" y="35" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!-- GUILD-->
+		<FontString name="RBM_GUILD_Frame" font="Fonts\FRIZQT__.TTF" text="GUILD" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="LEFT" >
+					<Offset x="40" y="15" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!--MYSELF -->
+		<FontString name="RBM_MYSELF_Frame" font="Fonts\FRIZQT__.TTF" text="RAID" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="LEFT" >
+					<Offset x="150" y="35" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!-- OFFICER -->
+		<FontString name="RBM_OFFICER_Frame" font="Fonts\FRIZQT__.TTF" text="OFFICER" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="LEFT" >
+					<Offset x="150" y="15" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+		<!-- Close Func -->
+		<FontString name="RBM_CLOSE_Frame" font="Fonts\FRIZQT__.TTF" text="CLOSE" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="BOTTOMLEFT" >
+					<Offset x="45" y="40" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+			<Scripts>
+				<OnEnter>RBM_Tooltip:Show();</OnEnter>
+				<OnLeave>RBM_Tooltip:Hide();</OnLeave>
+			</Scripts>
+		</FontString>
+		<!-- Close Func NEver-->
+		<FontString name="RBM_NEVER_Frame" font="Fonts\FRIZQT__.TTF" text="NEVER" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="BOTTOMLEFT" >
+					<Offset x="45" y="20" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+      </Layer>
+    </Layers>
+	<Frames>
+				
+		<Button name="RBM_Mainframe_Button1" inherits="UIPanelButtonTemplate" text="SELECTION">
+			<Size>
+				<AbsDimension x="140" y="23" />
+			</Size>
+			<Anchors>
+				<Anchor point="CENTER">
+					<Offset x="0" y="55" />
+				</Anchor>
+			</Anchors>
+			<Scripts>
+				<!--<OnLoad>
+					self:RegisterForClicks("LeftButtonUp", "LeftButtonDown");
+				</OnLoad>
+				<OnMouseUp>	RBM_SetBossLabel();</OnMouseUp>-->
+				<OnClick>RBMButton1_OnClick(self);</OnClick>
+				
+			</Scripts>
+		</Button>
+		
+		<CheckButton name="RBM_Check_Party" inherits="OptionsCheckButtonTemplate" checked="false">
+			<Size>
+				<AbsDimension x="20" y="20" />
+			</Size>
+			<Anchors>
+				<Anchor point="LEFT">
+					<Offset>
+						<AbsDimension x="10" y="35"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_UncheckAll(self);</OnClick>
+			</Scripts>
+			
+		</CheckButton>
+		
+		<CheckButton name="RBM_Check_Guild" inherits="OptionsCheckButtonTemplate" checked="false">
+			<Size>
+				<AbsDimension x="20" y="20" />
+			</Size>
+			<Anchors>
+				<Anchor point="LEFT">
+					<Offset>
+						<AbsDimension x="10" y="15"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_UncheckAll(self);</OnClick>
+			</Scripts>
+		</CheckButton>
+		
+		<CheckButton name="RBM_Check_Myself" inherits="OptionsCheckButtonTemplate" checked="false">
+			<Anchors>
+				<Anchor point="LEFT">
+					<Offset>
+						<AbsDimension x="120" y="35"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_UncheckAll(self);</OnClick>
+			</Scripts>
+		</CheckButton>
+		
+		<CheckButton name="RBM_Check_Officer" inherits="OptionsCheckButtonTemplate" checked="false">
+			<Anchors>
+				<Anchor point="LEFT">
+					<Offset>
+						<AbsDimension x="120" y="15"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_UncheckAll(self);</OnClick>
+			</Scripts>
+		</CheckButton>
+		
+		<CheckButton name="RBM_Check_Close" inherits="OptionsCheckButtonTemplate" checked="false">
+			
+			<Anchors>
+				<Anchor point="BOTTOMLEFT">
+					<Offset>
+						<AbsDimension x="20" y="33"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_CheckCloseFunc();</OnClick>
+				<OnEnter>RBM_Tooltip_OnEnter(self);</OnEnter>
+				<OnLeave>RBM_Tooltip_OnLeave();</OnLeave>
+			</Scripts>
+		</CheckButton>
+		
+		<CheckButton name="RBM_Check_Never" inherits="OptionsCheckButtonTemplate" checked="false">
+			<Anchors>
+				<Anchor point="BOTTOMLEFT">
+					<Offset>
+						<AbsDimension x="20" y="13"></AbsDimension>
+					</Offset>
+			</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_CheckNeverFunc();</OnClick>
+				<!--<OnEnter>RBM_Tooltip:Show();</OnEnter>
+				<OnLeave>RBM_Tooltip:Hide();</OnLeave>-->
+			</Scripts>
+		</CheckButton>
+		
+		<Button name="RBM_Mainframe_Button2" inherits="UIPanelButtonTemplate" text="POST_TACTICS">
+			<Size>
+				<AbsDimension x="140" y="23" />
+			</Size>
+			<Anchors>
+				<Anchor point="CENTER">
+					<Offset x="0" y="-10" />
+				</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_PrePost();</OnClick>
+			</Scripts>
+		</Button>
+		
+		<Button name="RBM_Mainframe_Button3" inherits="UIPanelButtonTemplate" text="HINT">
+			<Size>
+				<AbsDimension x="180" y="18" />
+			</Size>
+			<Anchors>
+				<Anchor point="CENTER">
+					<Offset x="0" y="-35" />
+				</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_tellHint();</OnClick>
+			</Scripts>
+		</Button>
+		
+		<Button name="RBM_Mainframe_Button4" inherits="UIPanelButtonTemplate" text="SETTINGS">
+			<Size>
+				<AbsDimension x="20" y="23" />
+			</Size>
+			<Anchors>
+				<Anchor point="TOPRIGHT">
+					<Offset x="-25" y="0" />
+				</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>InterfaceOptionsFrame_OpenToCategory("RobBossMods");</OnClick>
+			</Scripts>
+		</Button>
+		
+		<Button name="RBM_Mainframe_Button5" inherits="UIPanelButtonTemplate" text="HIDE">
+			<Size>
+				<AbsDimension x="20" y="23" />
+			</Size>
+			<Anchors>
+				<Anchor point="TOPRIGHT">
+					<Offset x="0" y="0" />
+				</Anchor>
+			</Anchors>
+			<Scripts>
+				<OnClick>RBM_Mainframe:Hide();</OnClick>
+			</Scripts>
+		</Button>
+		
+	</Frames>
+  </Frame>
+  
+  <Frame name="RBM_Tooltip" strata="TOOLTIP" parent="RBM_Mainframe" toplevel="true" movable="false" enableMouse="true" hidden="true">
+	<Scripts>
+		<!--<OnLoad>RBM_Mainframe_Init();</OnLoad>-->
+	</Scripts>  
+	 
+	<Size>
+		<AbsDimension x="310" y="30" />
+	</Size>
+	<Anchors>
+		<Anchor point="BOTTOMLEFT" >
+			<Offset x="45" y="32" />
+		</Anchor>
+	</Anchors>
+	<Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-Tooltip-Border" title="false">
+		<!--<BackgroundInsets>
+			<AbsInset left="11" right="12" top="12" bottom="11" />
+		</BackgroundInsets>-->
+		<EdgeSize>
+			<AbsValue val="32" />
+		</EdgeSize>
+	</Backdrop>
+	<Layers>
+      <Layer level="ARTWORK">
+		<!-- Close Func -->
+		<FontString name="RBM_CLOSE_TOOLTIP_Frame" font="Fonts\FRIZQT__.TTF" text="I AM A TOOLTIP" justifyH="LEFT" justifyV="TOP">
+			<Color r="1" g="1" b="1" a="1"/>
+			<FontHeight val="12"/>
+			<Anchors>
+				<Anchor point="LEFT" >
+					<Offset x="10" y="0" />
+				
+				</Anchor>
+			</Anchors>
+			<Shadow>
+				<Offset x="1" y="1" />
+				<Color r="0" g="0" b="0"/>
+			</Shadow>
+		</FontString>
+	</Layer>
+    </Layers>
+	<Frames>
+	</Frames>
+</Frame>
+ 
  <Button name="RBMMinimapButton" frameStrata="DIALOG" parent="UIParent" movable="true" hidden="false" inherits="MiniMapButtonTemplate">
     <Size><AbsDimension x="32" y="32"/></Size>
 	    <Anchors>

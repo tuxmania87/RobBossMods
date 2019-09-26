@@ -1,12 +1,16 @@
 -- Please DONT change the following 
 --
 --  RobBossMods  Author: Robert Hartmann
+--  Pîc on Thrall
 --  feel free to change the explanations but email me them because
 --  i will distribute the addon on curse.com and wowinterface.com
 --
 --  please never remove this comment, many thanks!
 
 local L 
+local precombat = false
+local incombat = false
+local lastinstance = nil
 local frame = CreateFrame("Frame")
 local lastSpoken = {}
 local lastboss = nil
@@ -17,7 +21,7 @@ local mytime = 0
 local sendbool = 0
 local partymember = 0
 local mynumber = math.random(50000)
-local rbm_version = 0.30
+local rbm_version = 0.40
 local rbm_displayversion = tostring(rbm_version).." beta"
 local update_told = 0
 local lastping  = 0
@@ -34,8 +38,11 @@ frame:RegisterEvent("CHAT_MSG_WHISPER")
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("INSTANCE_LOCK_START")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 SLASH_RBM1, SLASH_RBM2 = '/rbm', '/robbossmods';
 
 --menu thing
@@ -58,6 +65,8 @@ local raid_zones = {
 }
 
 local zones = {
+	["Zul'Aman"] = { 23574, 23576, 23578, 23577, 24239, 23863 },
+	["Zul'Gurub"] = { 52155, 52151, 52271, 52059, 52053, 52148 },
 	[BL["The Stonecore"]] = { 43438, 43214, 42188, 42333 },
 	[BL["Throne of the Tides"]] = {40586, 40765, 40825, 40792 },
 	[BL["Blackrock Caverns"]] = { 39665 , 39679, 39698, 39700, 39705 },
@@ -124,7 +133,19 @@ local boss_label = {
 	[43324] = BB["Cho'gall"],
 	[47120] = BB["Argaloth"],
 	[45871] = BB["Conclave of Wind"],
-	[46753] = BB["Al'Akir"]
+	[46753] = BB["Al'Akir"],
+	[52155] = "High Priest Venoxis",
+	[52151] = "Bloodlord Mandokir",
+	[52271] = "Edge of Madness",
+	[52059] = "High Priestess Kilnara" ,
+	[52053] = "Zanzil" ,
+	[52148] =  "Jin'do the Godbreaker",
+	[23574] = "Akil'zon" ,
+	[23576] = "Nalorakk" ,
+	[23578] = "Jan'alai" ,
+	[23577] = "Halazzi" ,
+	[24239] = "Hex Lord Malacrass",
+	[23863] = "Daakara"
 }
 
 --local menuFrame = CreateFrame("Frame", "ExampleMenuFrame", UIParent, "UIDropDownMenuTemplate")
@@ -208,11 +229,25 @@ function RBMMinimapButton_OnEnter(self)
     return;
   end
   GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT");
-  GameTooltip:AddLine("Rob Boss Mods");
+  if lastboss ~= nil then
+	GameTooltip:AddLine("Rob Boss Mods - "..L["CURRENTBOSS"]..": "..boss_label[lastboss]);
+  else
+	GameTooltip:AddLine("Rob Boss Mods - "..L["CURRENTBOSS"]..": "..L["NOBOSS"]);
+  end
   GameTooltip:AddLine(L["LEFTCLICK"],1,1,1);
   GameTooltip:AddLine(L["RIGHTCLICK"],1,1,1);
   GameTooltip:AddLine(L["DRAG"],1,1,1);
   GameTooltip:Show();
+end
+
+function RBM_Tooltip_OnEnter(self)
+  GameTooltip:SetOwner(RBM_Mainframe, "ANCHOR_CURSOR");
+  GameTooltip:AddLine(L["CLOSE_OPT_DESC"],1,1,1);
+  GameTooltip:Show();
+end
+
+function RBM_Tooltip_OnLeave()
+  GameTooltip:Hide();
 end
 
 function RBMMinimapButton_OnLeave()
@@ -229,7 +264,6 @@ self:RegisterForClicks("LeftButtonUp","RightButtonUp");
   self:SetScript("OnDragStart", RBMMinimapButton_OnDragStart);
   self:SetScript("OnDragStop", RBMMinimapButton_OnDragStop);
 end
-
 
 
 --end of menu
@@ -274,6 +308,33 @@ local function resetLang()
 	StaticPopup_Show ("RBM_LANGC1")
 end
 
+local function spelllinkBreak(line)
+	local tag = false
+	local nline = ""
+	for i = 1, #line do
+		local c = line:sub(i,i)
+		if c == "[" then
+			tag = true
+			nline = nline..c
+		elseif c == "]" then
+			tag = false
+			nline = nline..c
+		elseif tag and c == " " then
+			nline = nline.."_"
+		else
+			nline = nline..c
+		end
+	end
+	local wordlist = string.gmatch(nline, "%S+")
+	local count = 1
+	local ret = {}
+	for word in wordlist do
+		ret[count] = string.gsub(word, "_", " ")
+		count = count +1
+	end
+	return ret
+end
+
 local function parseSpellID(text)
 	local s = text:find("SPELL")
 	if s == nil then
@@ -295,6 +356,31 @@ local function parseSpellID(text)
 		--rekursion
 		return text:sub(1,s-1)..GetSpellLink(spellid)..parseSpellID(text:sub(e+1))
 	end
+end
+
+local function getLastDeadBoss() 
+	local _,_, encountersTotal,enN = GetInstanceLockTimeRemaining();
+	print(enN.."/"..encountersTotal);
+	for i= encountersTotal, 1, -1 do
+		local bname,asdf,BisKilled = GetInstanceLockTimeRemainingEncounter(i);
+		local toprint = i.." "..bname.." "
+		if BisKilled then toprint = toprint.."true" else toprint = toprint.."false" end
+		print(toprint);
+		if BisKilled then
+		print("tot");
+			if i < encountersTotal then
+				return i
+			else
+				for j=1,encountersTotal,1 do
+					_,_,isKilled2 = GetInstanceLockTimeRemainingEncounter(j);
+					if not isKilled2 then 
+						return (isKilled2-1)
+					end
+				end
+			end
+		end
+	end
+	return 0
 end
 
 local function handler(msg, editbox) 
@@ -321,21 +407,8 @@ local function handler(msg, editbox)
 		ChatFrame1:AddMessage(L["AUTHOR1"]);
 		ChatFrame1:AddMessage(L["AUTHOR2"]);
 	elseif msg == "test" then
-		--local name, typey, difficultyIndex, difficultyName, maxPlayers, dynamicDifficulty, isDynamic = GetInstanceInfo()
-		--ChatFrame1:AddMessage(name.." "..typey.." "..difficultyIndex.." "..difficultyName.." "..maxPlayers.." "..dynamicDifficulty.." "..tostring(isDynamic))
-		--ChatFrame1:AddMessage(GetCurrentMapAreaID());
-		--local cname = GetInstanceInfo()
-		--for k = 1,GetNumSavedInstances(),1 do
-			--local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(k)
-				--ChatFrame1:AddMessage(name.." ID: "..id.." "..reset.." "..tostring(locked).." "..encounterProgress.."/"..numEncounters);
-		--end
-		tmsg = "Hallo "..GetSpellLink(81642).." Link";
-		print(tmsg);
-		tmsg = prepSpell(tmsg)
-		for word in string.gmatch(tmsg, "%S+") do
-			print(word);
-		end
-
+		--print(getLastDeadBoss());
+		print(RBM_Mainframe:IsVisible());
 	elseif msg == "checks" then
 		SendAddonMessage( "RBMCheck", "foo" , "GUILD" );
 		if GetNumPartyMembers() > 0 then
@@ -344,6 +417,16 @@ local function handler(msg, editbox)
 		end
 	elseif msg == "resetlang" then
 		resetLang();
+	elseif msg == "toggle" then 
+		if RBM_Mainframe:IsVisible() then
+			RBM_Mainframe:Hide();
+		else
+			RBM_Mainframe:Show();
+		end
+	elseif msg == "show" then
+		RBM_Mainframe:Show();
+	elseif msg == "hide" then
+		RBM_Mainframe:Hide();
 	elseif msg == "minioff" then
 		rbm_showminimap = false
 		RBMMinimapButton:Hide()
@@ -352,16 +435,18 @@ local function handler(msg, editbox)
 		RBMMinimapButton:Show()
 	else
 		ChatFrame1:AddMessage("RobBossMods Version "..rbm_displayversion);
-		ChatFrame1:AddMessage(L["MENU_STATE"]);
 		ChatFrame1:AddMessage(L["MENU_RESETLANG"]);
 		ChatFrame1:AddMessage(L["MENU_AUTHOR"]);
 		ChatFrame1:AddMessage(L["MENU_HINT1"]);		
 		ChatFrame1:AddMessage(L["MENU_MINIMAP_OFF"]);
 		ChatFrame1:AddMessage(L["MENU_MINIMAP_ON"]);
+		ChatFrame1:AddMessage(L["MENU_FRAME_ON"]);
+		ChatFrame1:AddMessage(L["MENU_FRAME_OFF"]);
+		ChatFrame1:AddMessage(L["MENU_FRAME_TOGGLE"]);
 	end
 end
 
-local final_bosses = { 39705, 40484, 42333, 49541, 43875, 44819, 39378, 40792, 46964 }
+local final_bosses = { 39705, 40484, 42333, 49541, 43875, 44819, 39378, 40792, 46964 , 52148, 23863}
 local bosses = { 39665 , 39679, 39698, 39700, 39705 , -1 , 
 	39625, 40177, 40319, 40484, -1,
 	43438, 43214, 42188, 42333, -1,
@@ -370,19 +455,21 @@ local bosses = { 39665 , 39679, 39698, 39700, 39705 , -1 ,
 	44577, 43614, 43612, 44819, -1,
 	39425, 39428, 39788, 39587, 39731, 39732, 39378, -1,
 	40586, 40765, 40825, 40792, -1,
-	46962, 3887, 4278, 46963, 46964 , -1 }
+	46962, 3887, 4278, 46963, 46964 , -1 ,
+	52155, 52151, 52271, 52059,	52053, 52148, -1 ,
+	23574, 23576, 23578, 23577, 24239, 23863, -1 }
 
 -- Functions Section 
 local bosses_label 
 
-local function getType(guid)
-	local B = tonumber(guid:sub(5,5), 16);
+local function getType(ggx)
+	local B = tonumber(string.sub(ggx,5,5), 16);
 	local maskedB = B % 8;
 	return maskedB
 end
 
-local function getNPCId(guid)
-	local B = tonumber(guid:sub(-12,-9), 16);
+local function getNPCId(ggg)
+	local B = tonumber(string.sub(ggg,-12,-9), 16);
 	local maskedB = B % 8;
 	return B
 end
@@ -397,7 +484,9 @@ local function doBossPost(channel,reci)
 			whileDead = true,
 			hideOnEscape = true,
 		}
-		StaticPopup_Show ("RBM_NOBOSS")
+		if channel ~= "WHISPER" then
+			StaticPopup_Show ("RBM_NOBOSS")
+		end
 		return
 	end
 	--bosses
@@ -418,7 +507,9 @@ local function doBossPost(channel,reci)
 	--announce an split 
 	local announceStrings = {""}
 	for line in string.gmatch(toPostString,"[^\n]+") do
-		for word in string.gmatch(line, "%S+") do
+		local iarr = spelllinkBreak(line)
+		for i=1,#iarr,1 do
+			local word = iarr[i]
 			if strlen(announceStrings[#announceStrings])+1+strlen(word) > 255 then
 				tinsert(announceStrings, word)
 			else
@@ -451,97 +542,32 @@ local function IsEndboss(bo)
 	return gefunden
 end
 
-local info = {}
-local menuFrame1 = CreateFrame("Frame", "RBM_TitleDropDownMenuLeft")
-menuFrame1.displayMode = "MENU"
-menuFrame1.initialize = function(self, level) 
- if not level then return end
-    wipe(info)
-    if level == 1 then
-        -- Create the title of the menu
-        info.isTitle = 1
-        info.text = "RobBossMods"
-        info.notCheckable = 1
-        UIDropDownMenu_AddButton(info, level)
-		
-		info.disabled     = nil
-        info.isTitle      = nil
-        info.notCheckable = nil
-		
-		info.text = L["INFORM_PARTY"]
-		info.func = function()
-			SendChatMessage(L["DONTKNOW"], "PARTY",nil,nil)
-		end
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.isTitle = 1
-		if lastboss == nil then
-			info.text = L["CURRENTBOSS"]..": "..L["NONE"]
-		else
-			info.text = L["CURRENTBOSS"]..": "..boss_label[lastboss]
-		end
-		info.notCheckable = 1
-		UIDropDownMenu_AddButton(info, level)
-		
-		
-		info.text = L["POSTON"]
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.disabled     = nil
-        info.isTitle      = nil
-        info.notCheckable = nil
-		
-		info.text = L["GUILD"]
-		info.func = function() 
-			doBossPost("GUILD",nil)
-			CloseDropDownMenus()
-		end
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.text = L["PARTY"]
-		info.func = function()
-			doBossPost("PARTY",nil)
-			CloseDropDownMenus()
-		end
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.text = L["RAID"]
-		info.func = function()
-			doBossPost("RAID",nil)
-			CloseDropDownMenus()
-		end
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.text = L["SAY"]
-		info.func = function()
-			doBossPost("SAY",nil)
-			CloseDropDownMenus()
-		end
-		UIDropDownMenu_AddButton(info, level)
-		
-		info.text = L["MYSELF"]
-		info.func = function()
-			doBossPost("MYSELF",nil)
-			CloseDropDownMenus()
-		end
-		UIDropDownMenu_AddButton(info, level)
-			
-        info.text = L["OPTIONS"]
-		info.func = function()
-			InterfaceOptionsFrame_OpenToCategory("RobBossMods");
-		end
-        UIDropDownMenu_AddButton(info, level)
-		
-			
-		  -- Close menu item
-        info.hasArrow     = nil
-        info.value        = nil
-        info.notCheckable = 1
-        info.text         = CLOSE
-        info.func         = self.HideMenu
-        UIDropDownMenu_AddButton(info, level)
-    end
+--DEV
 
+
+
+--ENDDEV
+function RBM_tellHint() 
+	if rbm_tellgrid ~= nil then
+		if rbm_tellgrid["hintonce"] == nil then
+			SendChatMessage(L["DONTKNOW"], "PARTY",nil,nil)
+		else
+			SendChatMessage(rbm_tellgrid["hintonce"], "PARTY",nil,nil)
+		end
+	else
+		SendChatMessage(L["DONTKNOW"], "PARTY",nil,nil)
+	end
+end
+
+local info = {}
+
+function RBM_SetBossLabel()
+	if lastboss == nil then 
+		print(L["NOBOSS"]);
+		RBM_CurrentBoss_Frame:SetText(L["NOBOSS"]);
+	else
+		RBM_CurrentBoss_Frame:SetText(boss_label[lastboss]);
+	end
 end
 
 
@@ -566,11 +592,6 @@ menuFrame2.initialize = function(self, level)
 		info.notCheckable = 1
 		UIDropDownMenu_AddButton(info, level)
 		
-		info.isTitle = 1
-		info.text = L["CHOICE"]
-		info.notCheckable = 1
-		UIDropDownMenu_AddButton(info, level)
-		
 		info.disabled     = nil
         info.isTitle      = nil
         info.notCheckable = nil
@@ -582,12 +603,11 @@ menuFrame2.initialize = function(self, level)
 			UIDropDownMenu_AddButton(info, level)
 		end
 		
-		for k,_ in pairs(raid_zones) do
-			info.text = k
-			info.value = "R-"..k
-			UIDropDownMenu_AddButton(info, level)
-		end
-		
+		info.isTitle = nil
+		info.text = "Raid"
+		info.value = "raid"
+		info.notCheckable = 1
+		UIDropDownMenu_AddButton(info, level)
 		
 		  -- Close menu item
         info.hasArrow     = nil
@@ -599,52 +619,116 @@ menuFrame2.initialize = function(self, level)
 
 		
     elseif level == 2 then
-		if UIDROPDOWNMENU_MENU_VALUE:sub(1,1) == "N" then
+		if UIDROPDOWNMENU_MENU_VALUE == "raid" then 
+			for k,_ in pairs(raid_zones) do
+				info.hasArrow = 1
+				info.text = k
+				info.value = "R-"..k
+				UIDropDownMenu_AddButton(info, level)
+			end
+		elseif UIDROPDOWNMENU_MENU_VALUE:sub(1,1) == "N" then
 			for k,v in pairs(zones[UIDROPDOWNMENU_MENU_VALUE:sub(3)]) do
 				info.text = boss_label[v]
 				info.func = function()
 					lastboss = v,
-					CloseDropDownMenus()
-				end
-				UIDropDownMenu_AddButton(info, level)
-			end
-		else
-			for k,v in pairs(raid_zones[UIDROPDOWNMENU_MENU_VALUE:sub(3)]) do
-				info.text = boss_label[v]
-				info.func = function()
-					lastboss = v,
+					RBM_CurrentBoss_Frame:SetText(boss_label[v]);
 					CloseDropDownMenus()
 				end
 				UIDropDownMenu_AddButton(info, level)
 			end
 		end
-    end
-
+    elseif level == 3 then
+		for k,v in pairs(raid_zones[UIDROPDOWNMENU_MENU_VALUE:sub(3)]) do
+			info.text = boss_label[v]
+			info.func = function()
+				lastboss = v,
+				RBM_CurrentBoss_Frame:SetText(boss_label[v]);
+				CloseDropDownMenus()
+			end
+			UIDropDownMenu_AddButton(info, level)
+		end
+	end
 end
+
+
+function RBM_UncheckAll(self) 
+	RBM_Check_Party:SetChecked(false);
+	RBM_Check_Guild:SetChecked(false);
+	RBM_Check_Myself:SetChecked(false);
+	RBM_Check_Officer:SetChecked(false);
+
+	self:SetChecked(true);
+end
+	
+	
 
 function RBMButton_OnClick(self, button)
   if(button=="LeftButton")then
     --nuFrame = CreateFrame("Frame", "ExampleMenuFrame", UIParent, "UIDropDownMenuTemplate")
-    ToggleDropDownMenu(1, nil, menuFrame1, self:GetName(), 0, 0)
+    --ToggleDropDownMenu(1, nil, menuFrame1, self:GetName(), 0, 0)
+	if RBM_Mainframe:IsVisible() then
+		RBM_Mainframe:Hide();
+	else
+		RBM_Mainframe:Show();
+	end
   else
-    ToggleDropDownMenu(1, nil, menuFrame2, self:GetName(), 0, 0)
+    --ToggleDropDownMenu(1, nil menuFrame2, self:GetName(), 0, 0)
+	InterfaceOptionsFrame_OpenToCategory("RobBossMods");
   end
 end
 
+function RBMButton1_OnClick(self, button)
+    ToggleDropDownMenu(1, nil, menuFrame2, self:GetName(), 0, 0)
+	
+end
 
 
 function frame:OnEvent(event,...)
 		-- I log in and greet the guild, depending which time it is, see below
 		if event == "PLAYER_LOGIN" then
-			if rbm_tellnextboss == nil then
-				rbm_tellnextboss = true
-			end
+			RegisterAddonMessagePrefix("RBMPing")
+			RegisterAddonMessagePrefix("RBMPong")
+			RegisterAddonMessagePrefix("RBMCheckA")
+			RegisterAddonMessagePrefix("RBMVersion")
+			RegisterAddonMessagePrefix("RBMCheck")
+			
+			
+			
+			--if rbm_tellnextboss == nil then
+				rbm_tellnextboss = false
+			--end
 			if rbm_showminimap == nil then
 				rbm_showminimap = true
 			end
 			if rbm_telleveryboss == nil then
 				rbm_telleveryboss = false
 			end
+			if rbm_whispermode == nil then
+				rbm_whispermode = false
+			end
+			if rbm_tellgrid == nil then
+				rbm_tellgrid = {}
+			end
+			if rbm_showframe == nil then
+				rbm_showframe = false
+			end
+			if rbm_nevershow == nil then
+				rbm_nevershow = false
+			end
+			--[[if rbm_oncetold == nil and (rbm_elang=="de" or GetLocale()== "deDE") then
+				rbm_oncetold = 1
+					StaticPopupDialogs["RBM_ONCE"] = {
+					text = "Hallo an alle deutschen Spieler.\n\nIch habe ein persoenliches Anliegen. Ich (Magier) einen Horderaid.\nIch wuerde gern auf einen Server gehen, auf dem "..
+					"die Horde Seite nicht so leer ist und die Stimmung nicht ganz so kiddy like ist. \n\nDesweiteren ist es mir egal ob PVP oder PVE Server. Ich moechte maximal 2 mal in der Woche raiden. Am besten ware auch wenn ein Hunter oder Shami Heal Platz noch frei waere dann wuerde noch ein oder zwei Freunde mit kommen\n\n"..
+					"Solltet ihr also einen PVP oder PVE Server kennen, der auf Horde Seite gut gefuellt ist und es eine Gilde geben, die oben genannten Klassen sucht, waere es toll wenn ihr euch meldet unter robert@keinerspieltmitmir.de\n\ndetaillierte Bewerbungen schreiben wir dann natuerlich ( alle seit Classic Erfahrung)",
+					button1 = "OK",
+					--button2 = "No, I'll do that later",
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+				}
+				StaticPopup_Show ("RBM_ONCE")
+			end--]]
 			if rbm_showminimap then 
 				RBMMinimapButton:Show()
 			else
@@ -659,6 +743,8 @@ function frame:OnEvent(event,...)
 				end
 			end
 			
+			RBM_Mainframe_Init();
+			
 			RBM_createBlizzOptions();
 			ldb = LibStub:GetLibrary("LibDataBroker-1.1")
 			dataobj = ldb:NewDataObject("RobBossMods", {
@@ -668,9 +754,13 @@ function frame:OnEvent(event,...)
 				tooltiptext = "RobBossMods",
 				OnClick = function(clickedframe, button)
 					if button == "LeftButton" then
-						ToggleDropDownMenu(1, nil, menuFrame1, clickedframe, 0, 0)
+						if RBM_Mainframe:IsVisible() then
+							RBM_Mainframe:Hide();
+						else
+							RBM_Mainframe:Show();
+						end
 					else
-						ToggleDropDownMenu(1, nil, menuFrame2, clickedframe, 0, 0)
+						InterfaceOptionsFrame_OpenToCategory("RobBossMods");
 					end
 				end,
 			})
@@ -715,17 +805,33 @@ function frame:OnEvent(event,...)
 			elseif rbm_elang == nil and lang == "deDE" then
 				rbm_elang = "de" 
 			end
+		elseif event == "INSTANCE_LOCK_START" then
+				--print(getLastDeadBoss());
+		elseif event == "PLAYER_REGEN_ENABLED" then
+			if rbm_showframe and (GetNumPartyMembers() > 0 or GetNumRaidMembers() > 0) and precombat ~=nil then
+				RBM_Mainframe:Show();
+			end
+			incombat = false
+		elseif event == "PLAYER_REGEN_DISABLED" then
+			incombat = true
+			precombat = RBM_Mainframe:IsVisible();
+			RBM_Mainframe:Hide();
 		elseif event == "ZONE_CHANGED_NEW_AREA" then
 			local whereami = GetInstanceInfo();
 			local temp_zones = {}
+			local visited_place = false
 			for k,v in pairs(zones) do temp_zones[k] = v end
 			for k,v in pairs(raid_zones) do temp_zones[k] = v end
 			for k,_ in pairs(temp_zones) do
 				if k == whereami then
+					visited_place = true
+					if rbm_showframe then
+						RBM_Mainframe:Show();
+					end
 					local bossdown = 0
 					for k = 1,GetNumSavedInstances(),1 do
 						local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(k)
-						if (reset > 0 or locked) and encounterProgress > 0 and name == GetInstanceInfo() then
+						if (reset > 0 or locked) and encounterProgress > 0 and name == GetInstanceInfo() and encounterProgress < numEncounters then
 							bossdown = encounterProgress
 							checkUpdate();
 							ChatFrame1:AddMessage(name.." "..encounterProgress.."/"..numEncounters);
@@ -735,15 +841,87 @@ function frame:OnEvent(event,...)
 						boss_dead[temp_zones[k][i]] = 1
 					end
 					lastboss = temp_zones[k][bossdown+1]
+					RBM_CurrentBoss_Frame:SetText(boss_label[temp_zones[k][bossdown+1]]);
 					ChatFrame1:AddMessage("RobBossMods: "..k.." loaded.");
 					havetotell = true
 				end
 			end
+			if not visited_place then
+				RBM_Mainframe:Hide();
+			end
+			--[[local whereami, itype = GetInstanceInfo();
+			-- 5 man instances
+			if itype == "party" then
+				if lastinstance == nil then
+					lastinstance = whereami
+				end
+				ChatFrame1:AddMessage(whereami.." "..itype.." "..lastinstance);
+				if lastinstance ~= whereami then
+					--reset the progressCounter
+					local bossdown = 0
+					lastboss = zones[whereami][bossdown+1]
+					if lastboss == nil then
+						lastboss = 0 
+						ChatFrame1:AddMessage("RobBossMods: "..whereami.." not implemented. ");
+					else
+						ChatFrame1:AddMessage("RobBossMods: "..whereami.." loaded. ");
+					end
+				else
+					--count dead bosses
+					local encounterProgress = 0
+					local lastdead = nil
+					local limes = 0
+					if zones[whereami] ~= nil then
+						limes = #zones[whereami]
+					end
+					for k= limes, 1,-1 do
+						if boss_dead[zones[whereami][k]] --[[ == 1 then
+							encounterProgress = encounterProgress + 1
+							if lastdead == nil then
+								lastdead = k
+							end
+						end
+					end
+					if lastdead == nil then
+						lastdead = 0
+					end
+					if lastdead < limes and zones[whereami] ~= nil then
+						lastboss = zones[whereami][lastdead+1]
+					elseif lastdead >= limes and zones[whereami] ~= nil then
+						lastboss = zones[whereami][#zones[whereami]] --[[
+					end
+					if limes > 0 then
+						ChatFrame1:AddMessage("RobBossMods: "..whereami.." ("..encounterProgress.."/"..limes..") loaded. ");
+					else
+						ChatFrame1:AddMessage("RobBossMods: "..whereami.." not implemented (yet?). ");
+					end
+				end
+			elseif itype == "raid" then
+				for k,_ in pairs(raid_zones) do
+					if k == whereami then
+						local bossdown = 0
+						for k = 1,GetNumSavedInstances(),1 do
+							local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(k)
+							if (reset > 0 or locked) and encounterProgress > 0 and name == GetInstanceInfo() then
+								bossdown = encounterProgress
+								checkUpdate();
+								ChatFrame1:AddMessage(name.." "..encounterProgress.."/"..numEncounters);
+							end
+						end
+						for i = 1, bossdown, 1 do
+							boss_dead[raid_zones[k][i]]--[[ = 1
+						end
+						lastboss = raid_zones[k][bossdown+1]
+						ChatFrame1:AddMessage("RobBossMods: "..k.." loaded.");
+						havetotell = true
+					end
+				end
+			end--]]
 		elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
 			local a,b,c,d,e,f,g,h = ...
 			if b == "UNIT_DIED" then
-				local nid = getNPCId(f);
-				--ChatFrame1:AddMessage(g.." ist gestorben");
+				local nid = getNPCId(g);
+				--ChatFrame1:AddMessage(g.." ist gestorben ID "..nid);
 				local gefunden = false
 				for i,v in ipairs(bosses) do 
 					if nid == v then 
@@ -753,12 +931,14 @@ function frame:OnEvent(event,...)
 							SendChatMessage(boss_label[bosses[i]]..L["LASTBOSS"], "PARTY", nil, reci);
 						elseif nid ~= 47297 then
 							lastboss = bosses[i+1]
+							RBM_CurrentBoss_Frame:SetText(boss_label[bosses[i+1]]);
 							if aktiv == 1 and rbm_tellnextboss == true then
 								SendChatMessage(boss_label[bosses[i]]..L["BOSS_DEAD1"]..boss_label[bosses[i+1]]..L["BOSS_DEAD2"], "PARTY", nil, reci);
 							end
 						end
 						if bosses[i] == 47626 then
 							lastboss = 47739
+							RBM_CurrentBoss_Frame:SetText(boss_label[47739]);
 						end
 					end
 				end
@@ -767,9 +947,11 @@ function frame:OnEvent(event,...)
 						SendChatMessage(L["S_OZUMAT"], "PARTY", nil, reci);
 					elseif nid == 40788 and aktiv == 1 and rbm_tellnextboss then
 						lastboss = 40792
+						RBM_CurrentBoss_Frame:SetText(boss_label[40792]);
 						SendChatMessage(L["S_GHUR"], "PARTY", nil, reci);
 					elseif nid == 47296 and aktiv == 1 and rbm_tellnextboss then
 						lastboss = 43778
+						RBM_CurrentBoss_Frame:SetText(boss_label[43778]);
 						SendChatMessage(L["S_HELIX"], "PARTY", nil, reci);
 					end
 				end
@@ -806,12 +988,12 @@ function frame:OnEvent(event,...)
 					--ChatFrame1:AddMessage("bleibe aktiv");
 				end
 			elseif pref == "RBMCheckA" then
-				local wer,was = string.split("-",msg1)
+				local wer,was = string.split("#",msg1)
 				if wer == myname then
 					ChatFrame1:AddMessage(sender.."("..kanal.."): "..was);
 				end
 			elseif pref == "RBMCheck" then
-				SendAddonMessage("RBMCheckA", sender.."-"..tostring(rbm_version), kanal);
+				SendAddonMessage("RBMCheckA", sender.."#"..tostring(rbm_version), kanal);
 			--update
 			elseif pref == "RBMVersion" and sender ~= myname then
 				--message("L: "..rbm_version.."  R: "..tonumber(msg1));
@@ -833,15 +1015,21 @@ function frame:OnEvent(event,...)
 		elseif event == "PLAYER_TARGET_CHANGED" then
 			local uname = UnitName("target")
 			if uname == nil then
+				if not rbm_showframe then
+					RBM_Mainframe:Hide();
+				end
 				return
 			end
 			local guid = UnitGUID("target");
-			--ChatFrame1:AddMessage("Typ: "..getType(guid).." NPC ID: "..getNPCId(guid));
+			--ChatFrame1:AddMessage(guid.."  Typ: "..getType(guid).." NPC ID: "..getNPCId(guid));
 			local nid = getNPCId(guid);
 			if getType(guid) ~=3 and getType(guid) ~= 5 then
+				if not rbm_showframe then
+					RBM_Mainframe:Hide();
+				end
 				return 
 			end
-			
+			--ChatFrame1:AddMessage("NID "..nid);
 			local checkv
 			if lastSpoken[nid] == nil then
 				checkv = 0
@@ -849,22 +1037,42 @@ function frame:OnEvent(event,...)
 				checkv = lastSpoken[nid]
 			end
 			if checkv == 0 then
+				local visited_loop = false
 				for i,v in ipairs(bosses) do 
 					if nid == v and boss_dead[nid] == nil then
+						visited_loop = true
 						lastboss = nid
+						RBM_CurrentBoss_Frame:SetText(boss_label[v]);
+						if not incombat and not rbm_nevershow then
+							RBM_Mainframe:Show();
+						end
 						if aktiv == 1 and rbm_telleveryboss and already_told[nid] == nil then
-							SendChatMessage(L["DONTKNOW_OLD"],"PARTY",nil,nil);
+							local tosend 
+							if rbm_tellgrid ~= nil then
+								if rbm_tellgrid["hintevery"] == nil then
+									SendChatMessage(L["DONTKNOW_OLD"],"PARTY",nil,nil);
+								else
+									SendChatMessage(rbm_tellgrid["hintevery"],"PARTY",nil,nil);
+								end
+							else
+								SendChatMessage(L["DONTKNOW_OLD"],"PARTY",nil,nil);
+							end
 							lastSpoken[nid] = GetTime();
 						end
 					end
+				end
+				if not visited_loop and not rbm_showframe then
+					RBM_Mainframe:Hide();
 				end
 			end
 			
 		elseif (event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_PARTY_LEADER") and aktiv == 1 then
 			local ms,msender = ...
-			if ms == "!boss" and GetTime() - lastbossplot > 15 then
+			if ms == "!boss" and (GetTime() - lastbossplot > 15 or rbm_whispermode) then
 				if lastboss == nil then
 					--nop
+				elseif rbm_whispermode then
+					doBossPost("WHISPER",msender);
 				else
 					doBossPost("PARTY");
 					already_told[lastboss] = 1
@@ -888,6 +1096,8 @@ function frame:OnEvent(event,...)
 				else
 					SendChatMessage("RobBossMods v"..rbm_displayversion.." More Information on www.keinerspieltmitmir.de/rbm ","WHISPER", nil, author);
 				end
+			elseif lmes == "!boss" then
+				doBossPost("WHISPER", author);
 			end
 		end
 end
@@ -897,18 +1107,25 @@ end
 	local function getgen(info)
 		local ns,opt = string.split(".", info.arg)
 		if tonumber(opt) == 1 then
-			return rbm_tellnextboss
+			return rbm_showframe
 		elseif tonumber(opt) == 2 then
 			return rbm_telleveryboss
 		elseif tonumber(opt) == 3 then
 			return rbm_showminimap
+		elseif tonumber(opt) == 4 then
+			return rbm_whispermode
+		elseif tonumber(opt) == 5 then
+			return rbm_nevershow
 		end
 	end
 
 	local function setgen(info, arg1, arg2, arg3, arg4)
 		local ns,opt = string.split(".", info.arg)
 		if tonumber(opt) == 1 then
-			rbm_tellnextboss = not rbm_tellnextboss
+			rbm_showframe = not rbm_showframe
+			if rbm_showframe then
+				rbm_nevershow = false
+			end
 		elseif tonumber(opt) == 2 then
 			rbm_telleveryboss = not rbm_telleveryboss
 		elseif tonumber(opt) == 3 then
@@ -918,10 +1135,65 @@ end
 			else
 				RBMMinimapButton:Hide();
 			end	
+		elseif tonumber(opt) == 4 then
+			rbm_whispermode = not rbm_whispermode
+		elseif tonumber(opt) == 5 then
+			rbm_nevershow = not rbm_nevershow
+			if rbm_nevershow then
+				rbm_showframe = false
+				RBM_Mainframe:Hide();
+				if GetLocale() == "deDE" then
+					StaticPopupDialogs["RBM_ONCE"] = {
+						text = "ACHTUNG! Das Fenster wird dann nur noch erscheinen, wenn du auf das MinimapSymbol / BrokerSymbol drückst oder /rbm show in den Chat eingibst!",
+						button1 = "OK",
+						--button2 = "No, I'll do that later",
+						timeout = 0,
+						whileDead = true,
+						hideOnEscape = true,
+					}
+				else
+					StaticPopupDialogs["RBM_ONCE"] = {
+						text = "WARNING! The RBM MainWindow will now ONLY appear when you click on MinimapIcon/BrokerIcon or you type /rbm show in Chat",
+						button1 = "OK",
+						--button2 = "No, I'll do that later",
+						timeout = 0,
+						whileDead = true,
+						hideOnEscape = true,
+					}
+				end
+				StaticPopup_Show ("RBM_ONCE")
+			end
 		end
 	end
 
-
+function RBM_CheckNeverFunc() 
+	rbm_nevershow = RBM_Check_Never:GetChecked();
+	if rbm_nevershow then
+		rbm_showframe = false
+		RBM_Mainframe:Hide();
+		if GetLocale() == "deDE" then
+			StaticPopupDialogs["RBM_ONCE"] = {
+				text = "ACHTUNG! Das Fenster wird dann nur noch erscheinen, wenn du auf das MinimapSymbol / BrokerSymbol drückst oder /rbm show in den Chat eingibst!",
+				button1 = "OK",
+				--button2 = "No, I'll do that later",
+				timeout = 0,
+				whileDead = true,
+				hideOnEscape = true,
+			}
+		else
+			StaticPopupDialogs["RBM_ONCE"] = {
+				text = "WARNING! The RBM MainWindow will now ONLY appear when you click on MinimapIcon/BrokerIcon or you type /rbm show in Chat",
+				button1 = "OK",
+				--button2 = "No, I'll do that later",
+				timeout = 0,
+				whileDead = true,
+				hideOnEscape = true,
+			}
+		end
+		StaticPopup_Show ("RBM_ONCE")
+	end
+end
+	
 local function createconfig()	
 
 	local options = {}
@@ -936,6 +1208,106 @@ local function createconfig()
 	
 		
 		local iterator = 0
+		
+		options.args.a = {
+			type = "group",
+			name = L["MENU_GENERAL"],
+			desc = L["MENU_GENERAL"],
+			get = getgen,
+			set = setgen,
+			order = 1,
+			args = {
+				nextboss = {
+					order = 1,
+					type = "toggle",
+					name = L["ALWAYS_SHOW_FRAME"],
+					desc = L["ALWAYS_SHOW_FRAME_DESC"],
+					width = "double",
+					arg = "option.1",
+				},	
+				nevershow = {
+					order = 2,
+					type = "toggle",
+					name = L["NEVER_SHOW_FRAME"],
+					desc = L["NEVER_SHOW_FRAME_DESC"],
+					width = "double",
+					arg = "option.5",
+				},						
+				targetboss = {
+					order = 3,
+					type = "toggle",
+					name = L["EVERY_BOSS_ANNOUNCE"],
+					desc = L["EVERY_BOSS_ANNOUNCE_DESC"],
+					width = "double",
+					arg = "option.2",
+				},
+				minimapopt = {
+					order = 4,
+					type = "toggle",
+					name = L["MINIMAP_SHOW"],
+					desc = L["MINIMAP_SHOW"],
+					width = "double",
+					arg = "option.3",
+				},
+				whispermode = {
+					order = 5,
+					type = "toggle",
+					name = L["WHISPER_MODE"],
+					desc = L["WHISPER_MODE_DESC"],
+					width = "double",
+					arg = "option.4",
+				},
+				hintonce = {
+					order = 6,
+					type = "input",
+					name = L["HINTONCE"],
+					desc = L["HINTONCE_DESC"],
+					arg = "hintonce",
+					width = "full",
+					multiline = true,
+					get = function(info)
+						if rbm_tellgrid[info.arg] == nil then
+							return L["DONTKNOW"]
+						else
+							return rbm_tellgrid[info.arg]
+						end
+					end,
+					set = function(info, value)
+						rbm_tellgrid[info.arg] = value
+					end, 
+				},
+				hintevery = {
+					order = 7,
+					type = "input",
+					name = L["HINTEVERY"],
+					desc = L["HINTEVERY_DESC"],
+					arg = "hintevery",
+					width = "full",
+					multiline = true,
+					get = function(info)
+						if rbm_tellgrid[info.arg] == nil then
+							return L["DONTKNOW_OLD"]
+						else
+							return rbm_tellgrid[info.arg]
+						end
+					end,
+					set = function(info, value)
+						rbm_tellgrid[info.arg] = value
+					end, 
+				},
+				reset = {
+					order = 8,
+					type = "execute",
+					name = L["RESET_CUSTOM"],
+					desc = L["RESET_CUSTOM_DESC"],
+					func = function()
+						rbm_customTactics = {}
+						rbm_tellgrid = {}
+					end,
+				},
+			},
+		}
+		
 		for k,v in pairs(zones) do 
 			options.args[k] = {
 				type = "group",
@@ -950,7 +1322,7 @@ local function createconfig()
 			for r,t in pairs(v) do
 				options.args[k].args[tostring(t)] = {
 					type = "input",
-					order = it2+1,
+					order = it2+2,
 					name = boss_label[t],
 					desc = boss_label[t],
 					arg = iterator.."."..t,
@@ -989,7 +1361,7 @@ local function createconfig()
 			for r,t in pairs(v) do
 				options.args[k].args[tostring(t)] = {
 					type = "input",
-					order = it2+1,
+					order = it2+2,
 					name = boss_label[t],
 					desc = boss_label[t],
 					arg = iterator.."."..t,
@@ -1014,50 +1386,6 @@ local function createconfig()
 		end
 	
 	
-		options.args.general = {
-			type = "group",
-			name = L["MENU_GENERAL"],
-			desc = L["MENU_GENERAL"],
-			get = getgen,
-			set = setgen,
-			order = 1,
-			args = {
-				nextboss = {
-					order = 1,
-					type = "toggle",
-					name = L["NEXT_BOSS_ANNOUNCE"],
-					desc = L["NEXT_BOSS_ANNOUNCE_DESC"],
-					width = "double",
-					arg = "option.1",
-				},				
-				targetboss = {
-					order = 2,
-					type = "toggle",
-					name = L["EVERY_BOSS_ANNOUNCE"],
-					desc = L["EVERY_BOSS_ANNOUNCE_DESC"],
-					width = "double",
-					arg = "option.2",
-				},
-				minimapopt = {
-					order = 3,
-					type = "toggle",
-					name = L["MINIMAP_SHOW"],
-					desc = L["MINIMAP_SHOW"],
-					width = "double",
-					arg = "option.3",
-				},
-				reset = {
-					order = 5,
-					type = "execute",
-					name = L["RESET_CUSTOM"],
-					desc = L["RESET_CUSTOM_DESC"],
-					func = function()
-						rbm_customTactics = {}
-					end,
-				},
-			},
-		}
-		
 	return options
 end
 
@@ -1083,6 +1411,10 @@ function RBM_createBlizzOptions()
 	dialog:AddToBlizOptions("RBM-Bliz", "RobBossMods")
 
     --Options
+	
+	config:RegisterOptionsTable("RBM-GENERAL", options.args.a)
+	dialog:AddToBlizOptions("RBM-GENERAL", options.args.a.name, "RobBossMods")
+	
 	local iterator = 0
 	for k,v in pairs(zones) do
 		if iterator == 0 then
@@ -1109,13 +1441,78 @@ function RBM_createBlizzOptions()
 		iterator = iterator + 1
 	end
 	
-	config:RegisterOptionsTable("RBM-GENERAL", options.args.general)
-	dialog:AddToBlizOptions("RBM-GENERAL", options.args.general.name, "RobBossMods")
+	
 	
 	return blizzPanel
 end
 
 
+function RBM_Mainframe_Init() 
+	RBM_SetBossLabel();
+	RBM_Mainframe_Button1:SetText(L["CHOICE"]);
+	
+	RBM_PARTY_Frame:SetText(L["PARTY"].."/"..L["RAID"]);
+	RBM_GUILD_Frame:SetText(L["GUILD"]);
+	RBM_MYSELF_Frame:SetText(L["MYSELF"]);
+	
+	RBM_Mainframe_Button2:SetText(L["POSTON"]);
+	RBM_Mainframe_Button3:SetText(L["INFORM_PARTY"]);
+	RBM_Mainframe_Button4:SetText("!");
+	RBM_Mainframe_Button5:SetText("X");
+	
+	RBM_CurrentBoss_Frame_fixed:SetText(L["CURRENTBOSS"]);
+	
+	RBM_Check_Party:SetChecked(true);
+	RBM_CLOSE_Frame:SetText(L["CLOSE_OPT"]);
+	RBM_NEVER_Frame:SetText(L["NEVER_OPT"]);
+	
+	RBM_Check_Close:SetChecked(not rbm_showframe);
+	
+	RBM_CLOSE_TOOLTIP_Frame:SetText(L["CLOSE_OPT_DESC"]);
+	
+	ChatFrame1:AddMessage("RobBossMods: ",1.0,0.0,0.0);
+	if GetLocale()== "deDE" then
+		ChatFrame1:AddMessage("Sag mir was du über das neue Fenstersystem denkst auf curse.com oder auf meiner Website /rbm autor");
+	else
+		ChatFrame1:AddMessage("Tell me what you think about the new Window System on curse.com /rbm autor for contact information");
+	end
+	
+end
+
+function RBM_CheckCloseFunc()
+	if RBM_Check_Close:GetChecked() then
+		rbm_showframe = false
+		RBM_Mainframe:Hide();
+	else
+		rbm_showframe = true
+		rbm_nevershow = false
+	end
+end
+
+function RBM_PrePost() 
+	if RBM_Check_Party:GetChecked() then
+		if GetNumRaidMembers() > 0 then
+			doBossPost("RAID")
+		elseif GetNumPartyMembers() > 0 then
+			doBossPost("PARTY")
+		end
+	elseif  RBM_Check_Guild:GetChecked() then
+		doBossPost("GUILD")
+	elseif  RBM_Check_Myself:GetChecked() then
+		doBossPost("MYSELF")
+	elseif RBM_Check_Officer:GetChecked() then
+		doBossPost("OFFICER")
+	else
+		StaticPopupDialogs["RBM_NOBOSS"] = {
+			text = L["NOBOSS"],
+			button1 = "okay",
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+		StaticPopup_Show ("RBM_NOBOSS")
+	end
+end
 
 
 --End of Configuration Frame
